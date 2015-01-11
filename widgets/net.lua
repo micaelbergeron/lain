@@ -46,6 +46,7 @@ local function worker(args)
     local units = args.units or 1024 --kb
     local notify = args.notify or "on"
     local screen = args.screen or 1
+    local format = args.format or '%.1f'
     local settings = args.settings or function() end
 
     iface = args.iface or net.get_device()
@@ -71,11 +72,11 @@ local function worker(args)
         local now_r = helpers.first_line('/sys/class/net/' .. iface ..
                                            '/statistics/rx_bytes') or 0
 
-        net_now.sent = tostring((now_t - net.last_t) / timeout / units)
-        net_now.sent = string.gsub(string.format('%.1f', net_now.sent), ",", ".")
+        net_now.units_sent = tostring((now_t - net.last_t) / timeout / units)
+        net_now.sent = string.gsub(string.format(format, net_now.units_sent), ",", ".")
 
-        net_now.received = tostring((now_r - net.last_r) / timeout / units)
-        net_now.received = string.gsub(string.format('%.1f', net_now.received), ",", ".")
+        net_now.units_received = tostring((now_r - net.last_r) / timeout / units)
+        net_now.received = string.gsub(string.format(format, net_now.units_received), ",", ".")
 
         widget = net.widget
         settings()
