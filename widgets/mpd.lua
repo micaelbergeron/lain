@@ -35,6 +35,8 @@ local function worker(args)
     local music_dir   = args.music_dir or os.getenv("HOME") .. "/Music"
     local cover_size  = args.cover_size or 100
     local default_art = args.default_art or ""
+    local notify      = args.notify or false
+    local mpc         = args.mpc or "mpc"
     local settings    = args.settings or function() end
 
     local mpdcover = helpers.scripts_dir .. "mpdcover"
@@ -49,6 +51,12 @@ local function worker(args)
     }
 
     helpers.set_map("current mpd track", nil)
+
+    local mpc_call = function(option)
+        async.request(mpc.." "..option, function(f)
+            mpd:update()
+        end)
+    end
 
     function mpd.update()
         async.request(echo .. " | curl --connect-timeout 1 -fsm 3 " .. mpdh, function (f)
@@ -87,17 +95,33 @@ local function worker(args)
                     os.execute(string.format("%s %q %q %d %q", mpdcover, music_dir,
                                mpd_now.file, cover_size, default_art))
 
-                    mpd.id = naughty.notify({
-                        preset = mpd_notification_preset,
-                        icon = "/tmp/mpdcover.png",
-                        replaces_id = mpd.id,
-                    }).id
+                    if notify
+                    then
+                        mpd.id = naughty.notify({
+                            preset = mpd_notification_preset,
+                            icon = "/tmp/mpdcover.png",
+                            replaces_id = mpd.id,
+                        }).id
+                    end
                 end
             elseif mpd_now.state ~= "pause"
             then
                 helpers.set_map("current mpd track", nil)
             end
         end)
+    end
+
+    function mpd.play_pause()
+        mpc_call("toggle")
+    end
+    function mpd.next()
+        mpc_call("next")
+    end
+    function mpd.previous()
+        mpc_call("prev")
+    end
+    function mpd.stop()
+        mpc_call("stop")
     end
 
     helpers.newtimer("mpd", timeout, mpd.update)
