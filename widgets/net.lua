@@ -12,11 +12,14 @@ local helpers      = require("lain.helpers")
 local notify_fg    = require("beautiful").fg_focus
 local naughty      = require("naughty")
 local wibox        = require("wibox")
+local debug        = require("gears.debug")
 
 local io           = { popen  = io.popen }
+local tostring     = tostring
 local string       = { format = string.format,
                        gsub   = string.gsub,
                        match  = string.match }
+local math         = { ceil = math.ceil }
 
 local setmetatable = setmetatable
 
@@ -41,68 +44,70 @@ end
 
 local function worker(args)
     local args = args or {}
-    local timeout = args.timeout or 2
-    local units = args.units or 1024 --kb
-    local notify = args.notify or "on"
-    local screen = args.screen or 1
-    local settings = args.settings or function() end
+    args.timeout = args.timeout     or 2
+    args.units = args.units         or 1024 --kb
+    args.notify = args.notify       or "on"
+    args.screen = args.screen       or 1
+    args.format = args.format       or '%.1f'
+    args.settings = args.settings   or function() end
+    args.iface = args.iface         or net.get_device()
 
-    iface = args.iface or net.get_device()
-
+    debug.dump(args, 'Net args interface')
     net.widget = wibox.widget.textbox('')
-
-    helpers.set_map(iface, true)
+    helpers.set_map(args.iface, true)
 
     function update()
         net_now = {}
 
-        if iface == "" or string.match(iface, "network off")
+        if args.iface == "" or string.match(args.iface, "network off")
         then
-            iface = net.get_device()
+            args.iface = net.get_device()
         end
 
-        net_now.carrier = helpers.first_line('/sys/class/net/' .. iface ..
-                                           '/carrier') or "0"
-        net_now.state = helpers.first_line('/sys/class/net/' .. iface ..
-                                           '/operstate') or "down"
-        local now_t = helpers.first_line('/sys/class/net/' .. iface ..
-                                           '/statistics/tx_bytes') or 0
-        local now_r = helpers.first_line('/sys/class/net/' .. iface ..
-                                           '/statistics/rx_bytes') or 0
+        local now_t = helpers.first_line('/sys/class/net/' .. args.iface .. '/statistics/tx_bytes') or 0
+        local now_r = helpers.first_line('/sys/class/net/' .. args.iface .. '/statistics/rx_bytes') or 0
+        net_now.carrier = helpers.first_line('/sys/class/net/' .. args.iface .. '/carrier') or "0"
+        net_now.state = helpers.first_line('/sys/class/net/' .. args.iface .. '/operstate') or "down"
 
-        net_now.sent = (now_t - net.last_t) / timeout / units
-        net_now.sent = string.gsub(string.format('%.1f', net_now.sent), ",", ".")
+        debug.dump({
+            now_t = now_t,
+            now_r = now_r,
+            carrier = net_now.carrier,
+            state = net_now.state
+            }, 'Interface state')
 
-        net_now.received = (now_r - net.last_r) / timeout / units
-        net_now.received = string.gsub(string.format('%.1f', net_now.received), ",", ".")
-
-        widget = net.widget
-        settings()
-
+        net_now.units_sent = math.ceil((now_t - net.last_t) / args.timeout / args.units)
+        net_now.units_received = math.ceil((now_r - net.last_r) / args.timeout / args.units)
+        debug.dump(net_now, "Bandwidth used (in unit/timeout)")            
         net.last_t = now_t
         net.last_r = now_r
 
-        if net_now.carrier ~= "1" and notify == "on"
+        net_now.sent = string.gsub(string.format(args.format, net_now.units_sent), ",", ".")
+        net_now.received = string.gsub(string.format(args.format, net_now.units_received), ",", ".")
+
+        widget = net.widget
+        args:settings()
+        if net_now.carrier ~= "1" and args.notify == "on"
         then
-            if helpers.get_map(iface)
+            if helpers.get_map(args.iface)
             then
                 naughty.notify({
-                    title    = iface,
+                    title    = args.iface,
                     text     = "no carrier",
                     timeout  = 7,
                     position = "top_left",
                     icon     = helpers.icons_dir .. "no_net.png",
                     fg       = notify_fg or "#FFFFFF",
-                    screen   = screen
+                    screen   = args.screen
                 })
-                helpers.set_map(iface, false)
+                helpers.set_map(args.iface, false)
             end
         else
-            helpers.set_map(iface, true)
+            helpers.set_map(args.iface, true)
         end
     end
 
-    helpers.newtimer(iface, timeout, update)
+    helpers.newtimer(args.iface, args.timeout, update)
     return net.widget
 end
 
